@@ -1,34 +1,3 @@
-# Stage 1: Composer con PHP 8.4
-FROM php:8.4-cli AS composer
-
-RUN apt-get update && apt-get install -y unzip git && rm -rf /var/lib/apt/lists/*
-
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-WORKDIR /app
-COPY composer.json composer.lock ./
-
-RUN composer install \
-    --no-dev \
-    --optimize-autoloader \
-    --no-interaction \
-    --no-scripts \
-    --ignore-platform-reqs
-
-# Stage 2: Assets
-FROM node:22 AS assets
-
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-
-COPY resources ./resources
-COPY public ./public
-COPY vite.config.js ./
-COPY --from=composer /app/vendor ./vendor
-
-RUN npm run build
-
 # Stage 3: Final
 FROM php:8.4-cli
 
@@ -46,10 +15,9 @@ COPY --from=composer /app/vendor ./vendor
 COPY . .
 COPY --from=assets /app/public/build ./public/build
 
-RUN composer dump-autoload --optimize \
-    && php artisan package:discover --ansi \
-    && php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
+RUN composer dump-autoload --optimize
 
-CMD php artisan serve --host=0.0.0.0 --port=$PORT
+CMD php artisan config:cache \
+    && php artisan route:cache \
+    && php artisan view:cache \
+    && php artisan serve --host=0.0.0.0 --port=$PORT
