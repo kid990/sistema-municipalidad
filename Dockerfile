@@ -1,61 +1,28 @@
+# Stage 1: instalar dependencias PHP
+FROM composer:latest AS composer
+
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+
+# Stage 2: compilar assets (ahora sí tiene vendor/)
 FROM node:22 AS assets
 
 WORKDIR /app
-
 COPY package.json package-lock.json ./
-
 RUN npm ci
 
 COPY resources ./resources
 COPY public ./public
 COPY vite.config.js ./
+COPY --from=composer /app/vendor ./vendor   # <-- tomar vendor del stage anterior
 
 RUN npm run build
 
-
+# Stage 3: imagen final PHP
 FROM php:8.4-cli
 
-RUN apt-get update && apt-get install -y \
-    git \
-    unzip \
-    curl \
-    libpq-dev \
-    libzip-dev \
-    libpng-dev \
-    libjpeg62-turbo-dev \
-    libfreetype6-dev \
-    libicu-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install \
-        pdo \
-        pdo_pgsql \
-        zip \
-        gd \
-        intl \
-        bcmath \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# ... (igual que tenías)
 
-WORKDIR /app
-
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-COPY composer.json composer.lock ./
-
-RUN composer install \
-    --no-dev \
-    --optimize-autoloader \
-    --no-interaction \
-    --no-scripts
-
-COPY . .
-
+COPY --from=composer /app/vendor ./vendor
 COPY --from=assets /app/public/build ./public/build
-
-RUN composer dump-autoload --optimize \
-    && php artisan package:discover --ansi \
-    && php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
-
-CMD php artisan serve --host=0.0.0.0 --port=$PORT
